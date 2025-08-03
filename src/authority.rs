@@ -1,5 +1,4 @@
-use crate::error::{Error, Result};
-use error_stack::ResultExt;
+use crate::error::CertificateError;
 use rcgen::{
     CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose, IsCa, KeyPair,
     KeyUsagePurpose,
@@ -10,6 +9,8 @@ use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use time::{Duration, OffsetDateTime};
+
+type Result<T> = ::std::result::Result<T, CertificateError>;
 
 pub struct Identity {
     pub cert: rcgen::Certificate,
@@ -50,8 +51,7 @@ pub struct RootCA {
 
 impl RootCA {
     pub fn new<S: AsRef<str>>(name: S) -> Result<Self> {
-        let mut params =
-            CertificateParams::new(vec![]).change_context(Error::ConfigurationError)?;
+        let mut params = CertificateParams::new(vec![])?;
 
         params.distinguished_name = DistinguishedName::new();
         params
@@ -60,11 +60,9 @@ impl RootCA {
         params.is_ca = IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
         params.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign];
 
-        let signing_key = KeyPair::generate().change_context(Error::CertificateError)?;
+        let signing_key = KeyPair::generate()?;
 
-        let cert = params
-            .self_signed(&signing_key)
-            .change_context(Error::CertificateError)?;
+        let cert = params.self_signed(&signing_key)?;
 
         Ok(Self {
             cert,
@@ -83,7 +81,7 @@ impl RootCA {
 impl Identity {
     pub fn persist<P: AsRef<Path>>(&self, dir: P) -> Result<(CertPath, KeyPath)> {
         let dir = dir.as_ref();
-        fs::create_dir_all(dir).change_context(Error::ConfigurationError)?;
+        fs::create_dir_all(dir)?;
         let cert_path = dir.join("crt.pem");
         let key_path = dir.join("key.pem");
         #[cfg(unix)]
@@ -93,21 +91,15 @@ impl Identity {
                 .create(true)
                 .truncate(true)
                 .mode(0o644)
-                .open(&cert_path)
-                .change_context(Error::ConfigurationError)?;
+                .open(&cert_path)?;
             let mut key_file = fs::OpenOptions::new()
                 .write(true)
                 .create(true)
                 .truncate(true)
                 .mode(0o600)
-                .open(&key_path)
-                .change_context(Error::ConfigurationError)?;
-            cert_file
-                .write_all(self.cert.pem().as_bytes())
-                .change_context(Error::ConfigurationError)?;
-            key_file
-                .write_all(self.key.serialize_pem().as_bytes())
-                .change_context(Error::ConfigurationError)?;
+                .open(&key_path)?;
+            cert_file.write_all(self.cert.pem().as_bytes())?;
+            key_file.write_all(self.key.serialize_pem().as_bytes())?;
         }
         #[cfg(not(unix))]
         {
@@ -126,17 +118,15 @@ pub struct Issuer<'a> {
 
 impl<'a> Issuer<'a> {
     pub fn new<P: AsRef<Path>, Q: AsRef<Path>>(cert_path: P, key_path: Q) -> Result<Self> {
-        let cert_pem = fs::read_to_string(cert_path).change_context(Error::CertificateError)?;
-        let key_pem = fs::read_to_string(key_path).change_context(Error::CertificateError)?;
-        let signing_key = KeyPair::from_pem(&key_pem).change_context(Error::CertificateError)?;
-        let issuer = rcgen::Issuer::from_ca_cert_pem(&cert_pem, signing_key)
-            .change_context(Error::CertificateError)?;
+        let cert_pem = fs::read_to_string(cert_path)?;
+        let key_pem = fs::read_to_string(key_path)?;
+        let signing_key = KeyPair::from_pem(&key_pem)?;
+        let issuer = rcgen::Issuer::from_ca_cert_pem(&cert_pem, signing_key)?;
         Ok(Issuer { inner: issuer })
     }
 
     pub fn sign(&self, dns_names: Vec<String>) -> Result<Identity> {
-        let mut params =
-            CertificateParams::new(dns_names).change_context(Error::CertificateError)?;
+        let mut params = CertificateParams::new(dns_names)?;
         params.distinguished_name = DistinguishedName::new();
         params.key_usages = vec![
             KeyUsagePurpose::DigitalSignature,
@@ -149,10 +139,8 @@ impl<'a> Issuer<'a> {
         params.not_after = now + Duration::days(825);
 
         // Generate key and sign
-        let key = KeyPair::generate().change_context(Error::CertificateError)?;
-        let cert = params
-            .signed_by(&key, &self.inner)
-            .change_context(Error::CertificateError)?;
+        let key = KeyPair::generate()?;
+        let cert = params.signed_by(&key, &self.inner)?;
         Ok(Identity { cert, key })
     }
 }

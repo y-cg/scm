@@ -1,3 +1,4 @@
+use error_stack::Report;
 use thiserror::Error;
 
 pub type Result<T> = error_stack::Result<T, Error>;
@@ -9,6 +10,14 @@ pub enum Error {
     CertificateError,
     #[error("Unexpected error related to the keychain")]
     KeychainError,
+}
+
+#[derive(Error, Debug)]
+pub enum CertificateError {
+    #[error("IO error: {0}")]
+    IOError(#[from] std::io::Error),
+    #[error("Certificate error: {0}")]
+    CertError(#[from] rcgen::Error),
 }
 
 #[derive(Error, Debug)]

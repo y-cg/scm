@@ -7,13 +7,13 @@ mod keychain;
 use crate::authority::{Issuer, RootCA};
 use crate::cli::{CaCommands, Cli, Commands};
 use crate::config::{Config, Profile};
+#[cfg(target_os = "macos")]
+use crate::keychain::install_ca_to_keychain;
 use clap::Parser;
 use error::{Error, Result};
 use error_stack::ResultExt;
 use std::env::current_dir;
 use std::fs;
-#[cfg(target_os = "macos")]
-use crate::keychain::install_ca_to_keychain;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -38,9 +38,13 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Ca { command } => match command {
             CaCommands::Gen { profile } => {
-                let ca = RootCA::new(&profile)?.into_identity();
+                let ca = RootCA::new(&profile)
+                    .change_context(Error::CertificateError)?
+                    .into_identity();
                 let cert_dir = config_dir.join(&profile);
-                let (cert_path, key_path) = ca.persist(&cert_dir)?;
+                let (cert_path, key_path) = ca
+                    .persist(&cert_dir)
+                    .change_context(Error::CertificateError)?;
                 println!("Root CA generated at {}", cert_dir.display());
                 config.profiles.insert(
                     profile.clone(),
@@ -73,12 +77,15 @@ fn main() -> Result<()> {
                 .ok_or_else(|| error::ProfileNotFound(name))
                 .change_context(Error::ConfigurationError)?;
 
-            let issuer = Issuer::new(&profile.cert, &profile.key)?;
-            let identity = issuer.sign(dns)?;
+            let issuer =
+                Issuer::new(&profile.cert, &profile.key).change_context(Error::CertificateError)?;
+            let identity = issuer.sign(dns).change_context(Error::CertificateError)?;
             let current_dir = current_dir()
                 .change_context(Error::ConfigurationError)
                 .attach("Can't save certificate because current directory unknown")?;
-            identity.persist(current_dir)?;
+            identity
+                .persist(current_dir)
+                .change_context(Error::CertificateError)?;
         }
     }
     config.save(&config_path)?;
