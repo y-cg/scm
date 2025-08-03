@@ -7,12 +7,13 @@ mod keychain;
 use crate::authority::{Issuer, RootCA};
 use crate::cli::{CaCommands, Cli, Commands};
 use crate::config::{Config, Profile};
-use crate::keychain::install_ca_to_keychain;
 use clap::Parser;
 use error::{Error, Result};
 use error_stack::ResultExt;
 use std::env::current_dir;
 use std::fs;
+#[cfg(target_os = "macos")]
+use crate::keychain::install_ca_to_keychain;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
