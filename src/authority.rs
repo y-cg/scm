@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::error::CertificateError;
 use rcgen::{
     CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose, IsCa, KeyPair,
     KeyUsagePurpose,
@@ -9,6 +9,8 @@ use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use time::{Duration, OffsetDateTime};
+
+type Result<T> = ::std::result::Result<T, CertificateError>;
 
 pub struct Identity {
     pub cert: rcgen::Certificate,
